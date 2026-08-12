@@ -11,6 +11,7 @@ export interface StoredUser {
   fullName: string;
   email: string;
   role: UserRole;
+  walletAddress?: string;
 }
 
 function safeGet(key: string): string | null {
@@ -59,7 +60,10 @@ export function getStoredUser(): StoredUser | null {
 }
 
 export function getStoredWalletAddress(): string {
-  return safeGet(WALLET_KEY) ?? "";
+  const user = getStoredUser();
+  const userWallet = user?.walletAddress ?? "";
+  const storedWallet = safeGet(WALLET_KEY) ?? "";
+  return userWallet || storedWallet;
 }
 
 export function getStoredPeraNetwork(): "testnet" | "mainnet" {
@@ -70,6 +74,12 @@ export function setAuthSession(tokens: AuthTokens, user: StoredUser): void {
   safeSet(ACCESS_TOKEN_KEY, tokens.accessToken);
   safeSet(REFRESH_TOKEN_KEY, tokens.refreshToken);
   safeSet(USER_KEY, JSON.stringify(user));
+
+  if (user.walletAddress) {
+    safeSet(WALLET_KEY, user.walletAddress);
+  } else {
+    safeRemove(WALLET_KEY);
+  }
 }
 
 export function setStoredWalletAddress(walletAddress: string): void {
@@ -79,6 +89,13 @@ export function setStoredWalletAddress(walletAddress: string): void {
   }
 
   safeSet(WALLET_KEY, walletAddress);
+
+  // Update in stored user object as well if user is signed in
+  const user = getStoredUser();
+  if (user) {
+    user.walletAddress = walletAddress;
+    safeSet(USER_KEY, JSON.stringify(user));
+  }
 }
 
 export function setStoredPeraNetwork(network: "testnet" | "mainnet"): void {
@@ -89,6 +106,7 @@ export function clearAuthSession(): void {
   safeRemove(ACCESS_TOKEN_KEY);
   safeRemove(REFRESH_TOKEN_KEY);
   safeRemove(USER_KEY);
+  safeRemove(WALLET_KEY);
 }
 
 export function clearWalletSession(): void {

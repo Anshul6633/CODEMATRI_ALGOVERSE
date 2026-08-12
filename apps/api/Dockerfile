@@ -16,4 +16,4 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/apps/api/package.json ./apps/api/package.json
 COPY --from=builder /app/packages/shared/package.json ./packages/shared/package.json
 EXPOSE 8080
-CMD ["/app/apps/api/dist/server.js"]
+CMD ["node", "apps/api/dist/apps/api/src/server.js"]

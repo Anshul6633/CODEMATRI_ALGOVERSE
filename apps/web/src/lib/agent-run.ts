@@ -30,14 +30,14 @@ export async function runPaidAgent(
   options?: { resumeFile?: File | null },
 ) {
   const accessToken = getAccessToken();
-  if (!accessToken) {
-    throw new Error("Please sign in before running an agent.");
-  }
-
   const restoredWalletAddress = await restorePeraWalletSession().catch(() => "");
   const walletAddress = restoredWalletAddress || getStoredWalletAddress();
   if (walletAddress) {
     setStoredWalletAddress(walletAddress);
+  }
+
+  if (!accessToken && !walletAddress) {
+    throw new Error("Please sign in or connect Pera Wallet before running an agent.");
   }
 
   const inputPayload: Record<string, unknown> = { ...input };

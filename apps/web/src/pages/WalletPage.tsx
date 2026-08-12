@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { AppButton, Badge, SectionHeading, StatCard } from "../components/ui";
 import { apiFetch } from "../lib/api";
 import {
@@ -9,79 +10,51 @@ import {
   restorePeraWalletSession,
   setPeraNetwork,
 } from "../lib/pera";
-import { clearAuthSession, getStoredUser, setAuthSession, setStoredWalletAddress } from "../lib/session";
+import { clearAuthSession, getStoredUser, setStoredWalletAddress } from "../lib/session";
 import { getStoredPeraNetwork } from "../lib/session";
 
 export function WalletPage() {
+  const navigate = useNavigate();
+  const currentUser = getStoredUser();
+
   const [walletAddress, setWalletAddress] = useState("Not connected");
   const [status, setStatus] = useState<"idle" | "connecting" | "connected">("idle");
   const [network, setNetwork] = useState<"testnet" | "mainnet">(getStoredPeraNetwork());
-  const [email, setEmail] = useState("developer@aihub.market");
-  const [password, setPassword] = useState("ChangeMe123!");
   const [message, setMessage] = useState("");
-  const [userEmail, setUserEmail] = useState(getStoredUser()?.email ?? "Not signed in");
 
   useEffect(() => {
     const loadWallet = async () => {
+      const userWallet = currentUser?.walletAddress ?? "";
+      if (userWallet) {
+        setWalletAddress(userWallet);
+        setStatus("connected");
+        setNetwork(getPeraNetwork());
+        return;
+      }
+
       const savedAddress = getConnectedPeraAddress();
-      if (savedAddress) {
+      if (savedAddress && currentUser) {
         setWalletAddress(savedAddress);
         setStatus("connected");
         setNetwork(getPeraNetwork());
         return;
       }
 
-      try {
-        const restoredAddress = await restorePeraWalletSession();
-        if (restoredAddress) {
-          setWalletAddress(restoredAddress);
-          setStatus("connected");
-          setNetwork(getPeraNetwork());
-        }
-      } catch {
-        // No active Pera session, stay disconnected.
-      }
+      setWalletAddress("Not connected");
+      setStatus("idle");
     };
 
     void loadWallet();
-  }, []);
+  }, [currentUser?.id, currentUser?.walletAddress]);
 
   function handleNetworkChange(next: "testnet" | "mainnet") {
     setPeraNetwork(next);
     setNetwork(next);
     setMessage(
       next === "mainnet"
-        ? "Network switched to Mainnet. Ensure your wallet funds are on Mainnet and confirm the x402 network matches."
+        ? "Network switched to Mainnet. Ensure your wallet funds are on Mainnet."
         : "Network switched to Testnet.",
     );
-  }
-
-  async function handleLogin() {
-    try {
-      setMessage("");
-      const response = await apiFetch<{
-        accessToken: string;
-        refreshToken: string;
-        user: { id: string; fullName: string; email: string; role: "user" | "developer" | "admin" };
-      }>("/auth/login", {
-        method: "POST",
-        body: JSON.stringify({ email, password }),
-      });
-
-      setAuthSession(
-        { accessToken: response.accessToken, refreshToken: response.refreshToken },
-        {
-          id: response.user.id,
-          fullName: response.user.fullName,
-          email: response.user.email,
-          role: response.user.role,
-        },
-      );
-      setUserEmail(response.user.email);
-      setMessage("Signed in successfully.");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Login failed");
-    }
   }
 
   async function handleConnect() {
@@ -90,28 +63,28 @@ export function WalletPage() {
     try {
       const address = await connectPeraWallet();
       if (!address) {
-        throw new Error("No wallet address was returned by Pera.");
+        throw new Error("No wallet address returned by Pera Wallet.");
       }
 
+      // Try syncing with backend profile, but don't fail if guest or offline
       await apiFetch("/auth/connect-wallet", {
         method: "POST",
         body: JSON.stringify({
           walletAddress: address,
           provider: "pera",
         }),
-      });
+      }).catch(() => {});
 
       setWalletAddress(address);
       setStoredWalletAddress(address);
       setStatus("connected");
-      setMessage("Wallet connected and verified.");
+      setMessage("Pera Wallet connected successfully! 🚀");
     } catch (error) {
-      setWalletAddress("Not connected");
       setStatus("idle");
       const errorMessage = error instanceof Error ? error.message : "Unable to connect Pera Wallet";
       setMessage(
         errorMessage.includes("CONNECT_MODAL_CLOSED")
-          ? "Pera Wallet connection was closed before completing."
+          ? "Pera Wallet connection modal was closed."
           : errorMessage,
       );
     }
@@ -120,106 +93,175 @@ export function WalletPage() {
   async function handleDisconnect() {
     setStatus("idle");
     setWalletAddress("Not connected");
+    setStoredWalletAddress("");
     try {
       await disconnectPeraWallet();
+    } catch {
+      // Ignore disconnect errors
     } finally {
-      clearAuthSession();
-      setUserEmail("Not signed in");
-      setMessage("Disconnected.");
+      setMessage("Pera Wallet disconnected.");
     }
   }
+
+  const handleLogoutAccount = async () => {
+    try {
+      await apiFetch("/auth/logout", { method: "POST" });
+    } catch {
+      // Ignore network errors
+    } finally {
+      clearAuthSession();
+      navigate("/auth", { replace: true });
+    }
+  };
 
   return (
     <div className="space-y-8">
       <SectionHeading
-        eyebrow="Wallet"
-        title="Connect Pera Wallet"
-        description="Use Pera Wallet to link your address for identity, balance checks, and settlement visibility."
+        eyebrow="Wallet & Account"
+        title="Pera Wallet & Authentication"
+        description="Link your Pera Wallet address for Algorand x402 payments, micro-settlements, and identity verification."
       />
 
       <div className="grid gap-4 md:grid-cols-3">
-        <StatCard label="Wallet status" value={status === "connected" ? "Connected" : status === "connecting" ? "Connecting..." : "Disconnected"} detail="Linked account" />
-        <StatCard label="Network" value={network === "mainnet" ? "Mainnet" : "Testnet"} detail="Matches x402 network config" />
-        <StatCard label="Receipts" value="Stored" detail="Downloadable from transaction history" />
+        <StatCard
+          label="Wallet Status"
+          value={status === "connected" ? "Connected" : "Disconnected"}
+          detail={status === "connected" ? "Pera Wallet active" : "No wallet linked"}
+          trend={status === "connected" ? "Ready for x402" : "Connect below"}
+        />
+        <StatCard
+          label="Algorand Network"
+          value={network === "mainnet" ? "Mainnet" : "Testnet"}
+          detail="Matches x402 protocol config"
+        />
+        <StatCard
+          label="Account Status"
+          value={currentUser ? currentUser.role.toUpperCase() : "Guest"}
+          detail={currentUser ? currentUser.email : "Not signed in"}
+        />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
-        <div className="section-card p-6">
-          <p className="text-sm text-slate-400">Demo sign in</p>
-          <h3 className="mt-2 font-display text-2xl font-bold text-white">Use a seeded account</h3>
-          <p className="mt-2 text-sm text-slate-300">
-            Start with the demo developer account from the seed script, then connect Pera so the payment flow can sign transactions.
-          </p>
-          <div className="mt-5 space-y-4">
-            <label className="block">
-              <span className="mb-2 block text-sm text-slate-400">Email</span>
-              <input
-                value={email}
-                onChange={event => setEmail(event.target.value)}
-                className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none"
-              />
-            </label>
-            <label className="block">
-              <span className="mb-2 block text-sm text-slate-400">Password</span>
-              <input
-                type="password"
-                value={password}
-                onChange={event => setPassword(event.target.value)}
-                className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none"
-              />
-            </label>
-            <div className="flex flex-wrap gap-3">
-              <AppButton onClick={handleLogin}>Sign in</AppButton>
-              <AppButton
-                variant="secondary"
-                onClick={() => {
-                  setEmail("developer@aihub.market");
-                  setPassword("ChangeMe123!");
-                }}
-              >
-                Load demo creds
+      {message ? (
+        <div className="rounded-2xl border border-mint-300/30 bg-mint-300/10 px-4 py-3 text-sm text-mint-100 font-medium">
+          {message}
+        </div>
+      ) : null}
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* User Account Card */}
+        <div className="section-card p-6 flex flex-col justify-between space-y-4">
+          <div>
+            <div className="flex items-center justify-between border-b border-white/10 pb-4 mb-4">
+              <div>
+                <h3 className="font-display text-xl font-bold text-white">Platform Account</h3>
+                <p className="text-xs text-slate-400 mt-0.5">Your authenticated AIHub user identity</p>
+              </div>
+              {currentUser ? (
+                <Badge tone="mint">{currentUser.role.toUpperCase()}</Badge>
+              ) : (
+                <Badge tone="gold">GUEST</Badge>
+              )}
+            </div>
+
+            {currentUser ? (
+              <div className="space-y-3 text-sm">
+                <div>
+                  <span className="text-xs uppercase tracking-wider text-slate-400 font-semibold block mb-1">
+                    Full Name
+                  </span>
+                  <p className="text-white font-medium">{currentUser.fullName}</p>
+                </div>
+                <div>
+                  <span className="text-xs uppercase tracking-wider text-slate-400 font-semibold block mb-1">
+                    Email Address
+                  </span>
+                  <p className="text-white font-medium">{currentUser.email}</p>
+                </div>
+              </div>
+            ) : (
+              <div className="py-6 text-center space-y-3">
+                <p className="text-sm text-slate-300">You are currently operating as a guest.</p>
+                <AppButton href="/auth">Sign In / Register ↗</AppButton>
+              </div>
+            )}
+          </div>
+
+          {currentUser ? (
+            <div className="pt-4 border-t border-white/10">
+              <AppButton onClick={handleLogoutAccount} variant="secondary" className="w-full justify-center">
+                Sign Out of Account
               </AppButton>
             </div>
-          </div>
-          {message ? <p className="mt-4 text-sm text-mint-100">{message}</p> : null}
-          <div className="mt-6 rounded-2xl border border-white/5 bg-white/5 p-4 text-sm text-slate-300">
-            <p className="text-slate-400">Signed in user</p>
-            <p className="mt-2 break-all font-medium text-white">{userEmail}</p>
-          </div>
+          ) : null}
         </div>
 
-        <div className="section-card p-6">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        {/* Pera Wallet Card */}
+        <div className="section-card p-6 space-y-6">
+          <div className="flex items-center justify-between border-b border-white/10 pb-4">
             <div>
-              <p className="text-sm text-slate-400">Current address</p>
-              <p className="mt-2 break-all font-display text-2xl font-bold text-white">{walletAddress}</p>
+              <h3 className="font-display text-xl font-bold text-white">Pera Wallet Connection</h3>
+              <p className="text-xs text-slate-400 mt-0.5">Connect Pera for x402 payment signing</p>
             </div>
-            <Badge tone={status === "connected" ? "mint" : "gold"}>{status === "connected" ? "Wallet linked" : "Connect to link"}</Badge>
+            {status === "connected" ? (
+              <Badge tone="mint">Wallet Linked</Badge>
+            ) : (
+              <Badge tone="gold">Disconnected</Badge>
+            )}
           </div>
-          <div className="mt-6 flex flex-wrap gap-3">
-            <AppButton onClick={handleConnect} className={status === "connecting" ? "opacity-70" : ""}>
-              {status === "connecting" ? "Connecting..." : "Connect Pera"}
-            </AppButton>
-            <AppButton onClick={handleDisconnect} variant="secondary">Disconnect</AppButton>
+
+          <div>
+            <span className="text-xs uppercase tracking-wider text-slate-400 font-semibold block mb-2">
+              Connected Algorand Address
+            </span>
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4 font-mono text-xs font-semibold text-white break-all">
+              {walletAddress}
+            </div>
           </div>
-          <div className="mt-6 rounded-2xl border border-white/5 bg-white/5 p-4 text-sm text-slate-300">
-            <p className="text-slate-400">Network</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <AppButton variant={network === "testnet" ? "primary" : "secondary"} onClick={() => handleNetworkChange("testnet")}>
+
+          <div className="flex flex-wrap items-center gap-3">
+            {status === "connected" ? (
+              <button
+                type="button"
+                onClick={handleDisconnect}
+                className="rounded-2xl border border-red-400/30 bg-red-400/10 px-5 py-3 text-xs font-bold text-red-300 hover:bg-red-400/20 transition"
+              >
+                Disconnect Wallet
+              </button>
+            ) : (
+              <AppButton onClick={handleConnect} disabled={status === "connecting"}>
+                {status === "connecting" ? "Connecting..." : "Connect Pera Wallet"}
+              </AppButton>
+            )}
+          </div>
+
+          <div className="border-t border-white/10 pt-4 space-y-3">
+            <span className="text-xs uppercase tracking-wider text-slate-400 font-semibold block">
+              Network Mode
+            </span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => handleNetworkChange("testnet")}
+                className={`rounded-xl px-4 py-2 text-xs font-bold transition ${
+                  network === "testnet"
+                    ? "bg-mint-300 text-ink-950 shadow-md shadow-mint-300/20"
+                    : "border border-white/10 bg-white/5 text-slate-300 hover:text-white"
+                }`}
+              >
                 Testnet
-              </AppButton>
-              <AppButton variant={network === "mainnet" ? "primary" : "secondary"} onClick={() => handleNetworkChange("mainnet")}>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleNetworkChange("mainnet")}
+                className={`rounded-xl px-4 py-2 text-xs font-bold transition ${
+                  network === "mainnet"
+                    ? "bg-mint-300 text-ink-950 shadow-md shadow-mint-300/20"
+                    : "border border-white/10 bg-white/5 text-slate-300 hover:text-white"
+                }`}
+              >
                 Mainnet
-              </AppButton>
+              </button>
             </div>
-          </div>
-          <div className="mt-6 rounded-2xl border border-white/5 bg-white/5 p-4 text-sm text-slate-300">
-            <p className="text-slate-400">What this does</p>
-            <ul className="mt-3 space-y-2">
-              <li>1. Signs in with a seeded AIHub account.</li>
-              <li>2. Connects Pera Wallet and stores the address.</li>
-              <li>3. Updates the backend wallet profile so payment runs can succeed.</li>
-            </ul>
           </div>
         </div>
       </div>
