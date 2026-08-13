@@ -38,13 +38,17 @@ export function setPeraNetwork(network: "testnet" | "mainnet"): void {
 }
 
 export async function restorePeraWalletSession(): Promise<string> {
-  const accounts = await peraWallet.reconnectSession().catch(() => []);
-  const address = accounts[0] ?? "";
-  if (address) {
-    setStoredWalletAddress(address);
-    setStoredPeraNetwork(getPeraNetwork());
+  try {
+    const accounts = await peraWallet.reconnectSession();
+    const address = accounts[0] ?? "";
+    if (address) {
+      setStoredWalletAddress(address);
+      setStoredPeraNetwork(getPeraNetwork());
+    }
+    return address;
+  } catch {
+    return "";
   }
-  return address;
 }
 
 export async function connectPeraWallet(): Promise<string> {
@@ -70,29 +74,50 @@ export function getConnectedPeraAddress(): string {
 
 export function createPeraX402Signer(walletAddress: string): ClientAvmSigner {
   return {
-    address: walletAddress,
+    get address() {
+      return getStoredWalletAddress() || walletAddress;
+    },
     async signTransactions(txns: Uint8Array[], indexesToSign?: number[]) {
-      // Ensure Pera Wallet session is initialized before attempting to sign
-      if (!peraWallet.isConnected) {
-        const reconnected = await peraWallet.reconnectSession().catch(() => []);
-        if (!reconnected || reconnected.length === 0) {
-          const connected = await peraWallet.connect().catch(() => []);
-          if (!connected || connected.length === 0) {
-            throw new Error("Pera Wallet is not connected. Please connect your Pera Wallet on the Wallet page.");
-          }
+      let activeAccount = "";
+
+      // 1. Try reconnecting session if wallet is already connected
+      if (peraWallet.isConnected) {
+        try {
+          const accounts = await peraWallet.reconnectSession();
+          activeAccount = accounts[0] ?? "";
+        } catch {
+          // ignore
         }
       }
 
-      const activeAddress = peraWallet.reconnectSession ? (getStoredWalletAddress() || walletAddress) : walletAddress;
+      // 2. If session is not connected or reconnect returned empty, prompt connection modal!
+      if (!activeAccount || !peraWallet.isConnected) {
+        try {
+          const accounts = await peraWallet.connect();
+          activeAccount = accounts[0] ?? "";
+        } catch {
+          throw new Error("Pera Wallet connection was cancelled or failed. Please connect your Pera Wallet.");
+        }
+      }
+
+      if (!activeAccount) {
+        throw new Error("Pera Wallet is not connected. Please connect your Pera Wallet.");
+      }
+
+      setStoredWalletAddress(activeAccount);
+
       const indicesToSign = indexesToSign ?? txns.map((_, index) => index);
       const signed = new Array<Uint8Array | null>(txns.length).fill(null);
 
-      const txGroup: SignerTransaction[] = txns.map((txn, index) => ({
-        txn: algosdk.decodeUnsignedTransaction(txn),
-        signers: indicesToSign.includes(index) ? [activeAddress] : [],
-      }));
+      const txGroup: SignerTransaction[] = txns.map((txn, index) => {
+        const decoded = algosdk.decodeUnsignedTransaction(txn);
+        return {
+          txn: decoded,
+          signers: indicesToSign.includes(index) ? [activeAccount] : [],
+        };
+      });
 
-      const result = await peraWallet.signTransaction([txGroup], activeAddress);
+      const result = await peraWallet.signTransaction([txGroup], activeAccount);
 
       let signedIndex = 0;
       for (const index of indicesToSign) {

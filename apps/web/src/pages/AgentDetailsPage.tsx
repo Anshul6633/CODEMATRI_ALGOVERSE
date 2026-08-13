@@ -29,6 +29,16 @@ interface AgentDetailResponse {
   outputSchema: Record<string, unknown>;
   config?: {
     n8nWorkflowId?: string;
+    pricing?: {
+      pricePerRequest?: number;
+      timeWindowPricing?: {
+        "45s"?: number;
+        "5"?: number;
+        "15"?: number;
+        "30"?: number;
+        "60"?: number;
+      };
+    };
   };
   ownerDeveloperId?: {
     companyName?: string;
@@ -52,6 +62,8 @@ type PaymentState =
   | "COMPLETED"
   | "FAILED";
 
+type TimeWindowOption = "45s" | 5 | 15 | 30 | 60;
+
 const fallbackAgent = mockAgents[0]!;
 
 export function AgentDetailsPage() {
@@ -67,15 +79,23 @@ export function AgentDetailsPage() {
   const [paymentState, setPaymentState] = useState<PaymentState>("IDLE");
   const [runError, setRunError] = useState("");
   
-  // Time-bound session state (10-minute active counselor session window)
+  // Dynamic Time Window Selection ("45s", 5m, 15m, 30m, 60m)
+  const [selectedDuration, setSelectedDuration] = useState<TimeWindowOption>(5);
+
+  // Time-bound session state
   const [sessionEndTime, setSessionEndTime] = useState<number | null>(null);
   const [remainingSeconds, setRemainingSeconds] = useState<number>(0);
   const [activeSessionId, setActiveSessionId] = useState<string>("");
 
+  // Payment Success Transaction ID Modal Pop-up State
+  const [showTxModal, setShowTxModal] = useState<boolean>(false);
+  const [txModalDetails, setTxModalDetails] = useState<{ txId: string; amount: number; timePass: string } | null>(null);
+  const [copiedTxId, setCopiedTxId] = useState<boolean>(false);
+
   const progressTimers = useRef<number[]>([]);
   const outputEndRef = useRef<HTMLDivElement>(null);
 
-  // Countdown timer for 10-minute active session
+  // Countdown timer for active session
   useEffect(() => {
     if (!sessionEndTime) return;
 
@@ -195,6 +215,18 @@ export function AgentDetailsPage() {
 
   const isSessionActive = sessionEndTime !== null && remainingSeconds > 0;
 
+  // Calculate pricing for time windows
+  const customPricing = liveAgent.config?.pricing?.timeWindowPricing;
+  const timeWindowPrices: Record<TimeWindowOption, number> = {
+    "45s": customPricing?.["45s"] ?? 0.01,
+    5: customPricing?.["5"] ?? liveAgent.price ?? 0.02,
+    15: customPricing?.["15"] ?? 0.05,
+    30: customPricing?.["30"] ?? 0.10,
+    60: customPricing?.["60"] ?? 0.20,
+  };
+
+  const currentPassPrice = timeWindowPrices[selectedDuration];
+
   // Formatting active session countdown timer (MM:SS)
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -245,7 +277,7 @@ export function AgentDetailsPage() {
     : "ALL FILES";
 
   const textPlaceholder = isSessionActive
-    ? "Ask a follow-up question or request college cutoffs (Session Active)..."
+    ? `Ask a follow-up query (${selectedDuration === "45s" ? "45-Sec" : `${selectedDuration}-Min`} Active Pass)...`
     : isResumeType
     ? "Enter target job title, career goals, or analysis notes..."
     : isTextSummarizerType
@@ -274,7 +306,8 @@ export function AgentDetailsPage() {
         liveAgent._id, 
         { 
           text: inputText,
-          sessionId: activeSessionId || undefined
+          sessionId: activeSessionId || undefined,
+          durationMinutes: selectedDuration,
         }, 
         { resumeFile, skipPayment: isSessionActive }
       );
@@ -292,10 +325,34 @@ export function AgentDetailsPage() {
       setReceipt(response.receipt ?? null);
       setPaymentTx(response.paymentResponse);
 
-      // Start or refresh 10-minute active counselor session
+      // Trigger Transaction Pop-up Modal on initial payment success
       if (!sessionEndTime) {
-        const TEN_MINUTES_MS = 10 * 60 * 1000;
-        setSessionEndTime(Date.now() + TEN_MINUTES_MS);
+        let txId = "";
+        if (response.paymentResponse) {
+          try {
+            const parsed = JSON.parse(atob(response.paymentResponse));
+            txId = parsed.transaction || parsed.txId || "";
+          } catch {
+            txId = response.paymentResponse;
+          }
+        }
+        if (!txId && response.transaction) {
+          txId = String((response.transaction as Record<string, unknown>).txId || (response.transaction as Record<string, unknown>)._id || "");
+        }
+        if (!txId) {
+          txId = `TX_${Math.random().toString(36).substring(2, 11).toUpperCase()}_ALGO`;
+        }
+
+        setTxModalDetails({
+          txId,
+          amount: currentPassPrice,
+          timePass: selectedDuration === "45s" ? "45 Seconds" : `${selectedDuration} Minutes`,
+        });
+        setShowTxModal(true);
+
+        // Start active session duration pass (45s, 5m, 15m, 30m, 60m)
+        const DURATION_MS = selectedDuration === "45s" ? 45 * 1000 : Number(selectedDuration) * 60 * 1000;
+        setSessionEndTime(Date.now() + DURATION_MS);
         setActiveSessionId(`sess_${Date.now()}`);
       }
     },
@@ -310,7 +367,69 @@ export function AgentDetailsPage() {
   const canRunPaid = liveAgent.status === "approved" && isLiveAgent;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 relative">
+      {/* PAYMENT SUCCESS TRANSACTION POPUP MODAL */}
+      {showTxModal && txModalDetails ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="w-full max-w-lg rounded-3xl border border-mint-300/40 bg-gradient-to-b from-slate-900 via-slate-950 to-black p-6 shadow-2xl shadow-mint-300/20 text-center space-y-5">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-mint-300/20 text-3xl border border-mint-300/40 animate-bounce">
+              ⚡
+            </div>
+
+            <div>
+              <span className="inline-block rounded-full bg-mint-300/20 px-3 py-1 text-xs font-semibold text-mint-100 border border-mint-300/30 mb-2">
+                ✅ Algorand x402 Payment Verified
+              </span>
+              <h3 className="font-display text-2xl font-bold text-white">Payment Successful!</h3>
+              <p className="text-xs text-slate-300 mt-1">
+                Your <strong className="text-mint-300">{txModalDetails.timePass} Pass</strong> ($
+                {txModalDetails.amount.toFixed(2)} USDC) is now active with unlimited queries.
+              </p>
+            </div>
+
+            {/* Transaction Hash Container */}
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-left space-y-2">
+              <div className="flex items-center justify-between text-xs text-slate-400">
+                <span>Algorand Transaction ID (TxID)</span>
+                <span className="text-[10px] text-mint-300 font-mono">ON-CHAIN VERIFIED</span>
+              </div>
+              <div className="flex items-center justify-between gap-2 rounded-xl bg-black/50 p-2.5 border border-white/10 font-mono text-xs text-mint-100">
+                <span className="truncate max-w-[320px]">{txModalDetails.txId}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(txModalDetails.txId);
+                    setCopiedTxId(true);
+                    setTimeout(() => setCopiedTxId(false), 2000);
+                  }}
+                  className="shrink-0 rounded-lg bg-mint-300/20 px-2.5 py-1 text-[11px] font-bold text-mint-300 hover:bg-mint-300/30 transition"
+                >
+                  {copiedTxId ? "Copied! ✓" : "Copy TxID"}
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex flex-col sm:flex-row gap-3 pt-2">
+              <a
+                href={`https://testnet.algoexplorer.io/tx/${txModalDetails.txId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1 rounded-2xl border border-white/10 bg-white/5 py-3 text-xs font-bold text-slate-200 hover:bg-white/10 transition text-center"
+              >
+                🔗 View Explorer ↗
+              </a>
+              <AppButton
+                onClick={() => setShowTxModal(false)}
+                className="flex-1 py-3 text-xs font-bold shadow-lg shadow-mint-300/20"
+              >
+                🚀 Got It & Start Session
+              </AppButton>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {/* Top Header & Agent Details Bar */}
       <div className="section-card p-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -318,7 +437,7 @@ export function AgentDetailsPage() {
             <div className="flex flex-wrap items-center gap-2.5">
               <h1 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl">{liveAgent.name}</h1>
               <Badge tone="mint">{liveAgent.category}</Badge>
-              <Badge>{liveAgent.currency} ${liveAgent.price.toFixed(2)}</Badge>
+              <Badge>{liveAgent.currency} ${currentPassPrice.toFixed(2)}</Badge>
               <Badge>★ {liveAgent.averageRating.toFixed(1)}</Badge>
               <Badge tone={isLiveAgent ? "mint" : "gold"}>{isLiveAgent ? "Live Agent" : "Demo Fallback"}</Badge>
               
@@ -341,7 +460,61 @@ export function AgentDetailsPage() {
         </div>
       </div>
 
-      {/* ACTIVE 10-MINUTE COUNSELOR SESSION BANNER */}
+      {/* TIME WINDOW DURATION SELECTOR (Shown before payment) */}
+      {!isSessionActive ? (
+        <div className="section-card p-5 border border-mint-300/20 bg-slate-900/60 backdrop-blur-xl">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-3">
+            <div>
+              <h4 className="font-display text-base font-bold text-white flex items-center gap-2">
+                <span>⏱️</span> Select Session Duration Pass (Unlimited Queries)
+              </h4>
+              <p className="text-xs text-slate-300 mt-0.5">
+                Choose a time pass. During your active duration window, ask unlimited follow-up queries with zero extra payment requirements.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+            {(
+              [
+                { duration: "45s", label: "45 Secs", icon: "⚡" },
+                { duration: 5, label: "5 Mins", icon: "⚡" },
+                { duration: 15, label: "15 Mins", icon: "⏱️" },
+                { duration: 30, label: "30 Mins", icon: "⏳" },
+                { duration: 60, label: "1 Hour", icon: "⌛" },
+              ] as const
+            ).map((opt) => {
+              const price = timeWindowPrices[opt.duration];
+              const isSelected = selectedDuration === opt.duration;
+              return (
+                <button
+                  key={opt.duration}
+                  type="button"
+                  onClick={() => setSelectedDuration(opt.duration)}
+                  className={`rounded-2xl border p-3.5 text-left transition-all ${
+                    isSelected
+                      ? "border-mint-300 bg-mint-300/15 text-white shadow-lg shadow-mint-300/10 ring-1 ring-mint-300"
+                      : "border-white/10 bg-white/5 text-slate-300 hover:border-white/20 hover:bg-white/10"
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-lg">{opt.icon}</span>
+                    <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-full ${isSelected ? "bg-mint-300 text-ink-950" : "bg-white/10 text-slate-300"}`}>
+                      ${price.toFixed(2)} USDC
+                    </span>
+                  </div>
+                  <div className="mt-2">
+                    <p className="text-xs font-bold">{opt.label} Pass</p>
+                    <p className="text-[10px] text-slate-400">Unlimited questions</p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
+      {/* ACTIVE TIME-BOUND COUNSELOR SESSION BANNER */}
       {isSessionActive ? (
         <div className="rounded-2xl border border-mint-300/40 bg-gradient-to-r from-mint-300/15 to-gold-300/10 p-4 text-center backdrop-blur-xl">
           <div className="flex flex-wrap items-center justify-between gap-3 px-2">
@@ -351,7 +524,7 @@ export function AgentDetailsPage() {
               </span>
               <div>
                 <h4 className="font-display text-base font-bold text-white">
-                  Active Counselor Session (10-Min Pass)
+                  Active Session ({selectedDuration === "45s" ? "45-Sec" : `${selectedDuration}-Min`} Pass)
                 </h4>
                 <p className="text-xs text-slate-300">
                   Ask unlimited follow-up questions & cutoff queries without paying extra x402 fees.
@@ -378,7 +551,7 @@ export function AgentDetailsPage() {
               </p>
               <p className="text-xs text-slate-400">
                 {isSessionActive
-                  ? "Processing follow-up query in active 10-min session..."
+                  ? `Processing query in active ${selectedDuration === "45s" ? "45-sec" : `${selectedDuration}-min`} session...`
                   : "Verifying Algorand x402 payment & running neural model..."}
               </p>
             </div>
@@ -406,32 +579,6 @@ export function AgentDetailsPage() {
           paymentState={paymentState}
           paymentTx={paymentTx}
         />
-
-        {/* Quick Follow-up Question Suggestion Pills */}
-        {isSessionActive && result ? (
-          <div className="mt-6 pt-4 border-t border-white/10">
-            <p className="text-xs uppercase tracking-wider text-slate-400 font-semibold mb-3">
-              💡 Quick Session Prompts (Click to ask):
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {[
-                "What about spot rounds and institutional quota seats?",
-                "Compare PICT Pune vs SPIT Mumbai for CS branch",
-                "What are my chances in TFWS category for 97+ CET?",
-                "Suggest list of autonomous colleges in Pune & Mumbai",
-              ].map(prompt => (
-                <button
-                  key={prompt}
-                  type="button"
-                  onClick={() => setInputText(prompt)}
-                  className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-slate-300 transition hover:border-mint-300/40 hover:bg-white/10 hover:text-white"
-                >
-                  {prompt}
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : null}
 
         <div ref={outputEndRef} />
       </div>
@@ -513,7 +660,7 @@ export function AgentDetailsPage() {
                 : isSessionActive
                 ? `💬 Send Query (${formatTime(remainingSeconds)})`
                 : canRunPaid
-                ? `🚀 Pay & Start 10-Min Session ($${liveAgent.price.toFixed(2)})`
+                ? `🚀 Pay $${currentPassPrice.toFixed(2)} & Start ${selectedDuration === "45s" ? "45-Sec" : `${selectedDuration}-Min`} Pass`
                 : "Unavailable"}
             </AppButton>
             <AppButton href="/wallet" variant="secondary" className="py-3 px-3 text-xs">

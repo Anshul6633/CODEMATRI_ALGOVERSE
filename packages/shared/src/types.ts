@@ -62,9 +62,18 @@ export interface AgentAiConfig {
   responseFormat: (typeof import("./constants").RESPONSE_FORMATS)[number];
 }
 
+export interface TimeWindowPricing {
+  "45s"?: number;
+  "5"?: number;
+  "15"?: number;
+  "30"?: number;
+  "60"?: number;
+}
+
 export interface AgentPricingConfig {
   currency: "USDC";
   pricePerRequest: number;
+  timeWindowPricing?: TimeWindowPricing;
   freeTrial: boolean;
   freeTrialRequests?: number;
   rateLimitPerMinute?: number;

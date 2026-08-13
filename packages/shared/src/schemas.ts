@@ -123,9 +123,18 @@ export const agentAiConfigSchema = z.object({
   responseFormat: z.enum(responseFormatValues).default("json"),
 });
 
+export const timeWindowPricingSchema = z.object({
+  "45s": z.number().nonnegative().optional(),
+  "5": z.number().nonnegative().optional(),
+  "15": z.number().nonnegative().optional(),
+  "30": z.number().nonnegative().optional(),
+  "60": z.number().nonnegative().optional(),
+}).optional();
+
 export const agentPricingConfigSchema = z.object({
   currency: z.literal("USDC").default("USDC"),
   pricePerRequest: currencyAmountSchema,
+  timeWindowPricing: timeWindowPricingSchema,
   freeTrial: z.boolean().default(false),
   freeTrialRequests: z.number().int().min(0).max(1000).optional(),
   rateLimitPerMinute: z.number().int().min(0).max(10000).optional(),

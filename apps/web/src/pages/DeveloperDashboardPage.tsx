@@ -30,6 +30,11 @@ type FormState = {
   category: string;
   description: string;
   price: number;
+  price45s: number;
+  price5m: number;
+  price15m: number;
+  price30m: number;
+  price1h: number;
   tags: string;
   n8nWebhookUrl: string;
   n8nWorkflowId: string;
@@ -63,6 +68,11 @@ function createDefaultForm(): FormState {
     category: AGENT_CATEGORIES[0] ?? "productivity",
     description: "",
     price: 0.02,
+    price45s: 0.01,
+    price5m: 0.02,
+    price15m: 0.05,
+    price30m: 0.10,
+    price1h: 0.20,
     tags: "ai, workflow",
     n8nWebhookUrl: "",
     n8nWorkflowId: "",
@@ -94,12 +104,18 @@ export function DeveloperDashboardPage() {
 
   useEffect(() => {
     if (existingAgent) {
+      const tw = existingAgent.config?.pricing?.timeWindowPricing;
       setForm({
         name: existingAgent.name ?? "",
         slug: existingAgent.slug ?? "",
         category: existingAgent.category ?? AGENT_CATEGORIES[0] ?? "productivity",
         description: existingAgent.description ?? "",
         price: existingAgent.price ?? 0.02,
+        price45s: tw?.["45s"] ?? 0.01,
+        price5m: tw?.["5"] ?? 0.02,
+        price15m: tw?.["15"] ?? 0.05,
+        price30m: tw?.["30"] ?? 0.10,
+        price1h: tw?.["60"] ?? 0.20,
         tags: (existingAgent.tags ?? []).join(", "),
         n8nWebhookUrl: existingAgent.config?.n8nWebhookUrl ?? "",
         n8nWorkflowId: existingAgent.config?.n8nWorkflowId ?? "",
@@ -136,6 +152,13 @@ export function DeveloperDashboardPage() {
         pricing: {
           currency: "USDC" as const,
           pricePerRequest: Number(form.price) || 0.02,
+          timeWindowPricing: {
+            "45s": Number(form.price45s) || 0.01,
+            "5": Number(form.price5m) || 0.02,
+            "15": Number(form.price15m) || 0.05,
+            "30": Number(form.price30m) || 0.10,
+            "60": Number(form.price1h) || 0.20,
+          },
           freeTrial: false,
         },
         input: { text: true, pdf: false, image: false, audio: false, json: false },
@@ -238,7 +261,7 @@ export function DeveloperDashboardPage() {
 
       <div className="section-card p-6 shadow-2xl backdrop-blur-xl">
         <form onSubmit={handleSubmit} className="space-y-5">
-          {/* Agent Name & Price */}
+          {/* Agent Name & Base Price */}
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
@@ -256,13 +279,13 @@ export function DeveloperDashboardPage() {
                   }))
                 }
                 className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none focus:border-mint-300/40"
-                placeholder="e.g. Resume Maker Pro"
+                placeholder="e.g. College Counselor AI"
               />
             </div>
 
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
-                Price Per Request (USDC) *
+                Base Single-Run Price (USDC) *
               </label>
               <input
                 type="number"
@@ -274,6 +297,94 @@ export function DeveloperDashboardPage() {
                 className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none focus:border-mint-300/40"
                 placeholder="0.02"
               />
+            </div>
+          </div>
+
+          {/* TIME WINDOW SESSION PRICING CONFIGURATION */}
+          <div className="rounded-2xl border border-mint-300/30 bg-mint-300/5 p-4.5 space-y-3">
+            <div>
+              <h4 className="font-display text-sm font-bold text-white flex items-center gap-2">
+                <span>⏱️</span> Time-Bound Session Pass Pricing (USDC)
+              </h4>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Set prices for session duration passes. Buyers get unlimited queries within their chosen duration pass.
+              </p>
+            </div>
+            <div className="grid gap-2 grid-cols-2 sm:grid-cols-5">
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                  ⚡ 45 Secs Pass
+                </label>
+                <input
+                  type="number"
+                  min="0.00"
+                  step="0.01"
+                  value={form.price45s}
+                  onChange={(e) => setForm((prev) => ({ ...prev, price45s: Number(e.target.value) }))}
+                  className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white outline-none focus:border-mint-300/40"
+                  placeholder="0.01"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                  ⚡ 5 Mins Pass
+                </label>
+                <input
+                  type="number"
+                  min="0.00"
+                  step="0.01"
+                  value={form.price5m}
+                  onChange={(e) => setForm((prev) => ({ ...prev, price5m: Number(e.target.value) }))}
+                  className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white outline-none focus:border-mint-300/40"
+                  placeholder="0.02"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                  ⏱️ 15 Mins Pass
+                </label>
+                <input
+                  type="number"
+                  min="0.00"
+                  step="0.01"
+                  value={form.price15m}
+                  onChange={(e) => setForm((prev) => ({ ...prev, price15m: Number(e.target.value) }))}
+                  className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white outline-none focus:border-mint-300/40"
+                  placeholder="0.05"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                  ⏳ 30 Mins Pass
+                </label>
+                <input
+                  type="number"
+                  min="0.00"
+                  step="0.01"
+                  value={form.price30m}
+                  onChange={(e) => setForm((prev) => ({ ...prev, price30m: Number(e.target.value) }))}
+                  className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white outline-none focus:border-mint-300/40"
+                  placeholder="0.10"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                  ⌛ 1 Hour Pass
+                </label>
+                <input
+                  type="number"
+                  min="0.00"
+                  step="0.01"
+                  value={form.price1h}
+                  onChange={(e) => setForm((prev) => ({ ...prev, price1h: Number(e.target.value) }))}
+                  className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white outline-none focus:border-mint-300/40"
+                  placeholder="0.20"
+                />
+              </div>
             </div>
           </div>
 
@@ -321,47 +432,50 @@ export function DeveloperDashboardPage() {
               value={form.description}
               onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
               className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none focus:border-mint-300/40"
-              placeholder="Describe what your AI agent does and how it helps users..."
+              placeholder="Describe what your AI agent does, what inputs it takes, and what outputs it produces..."
             />
           </div>
 
-          {/* n8n Webhook & Workflow ID */}
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
-                n8n Webhook URL (Optional)
-              </label>
-              <input
-                type="url"
-                value={form.n8nWebhookUrl}
-                onChange={(e) => setForm((prev) => ({ ...prev, n8nWebhookUrl: e.target.value }))}
-                className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none focus:border-mint-300/40"
-                placeholder="https://n8n.example.com/webhook/..."
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
-                n8n Workflow ID (Optional)
-              </label>
-              <input
-                type="text"
-                value={form.n8nWorkflowId}
-                onChange={(e) => setForm((prev) => ({ ...prev, n8nWorkflowId: e.target.value }))}
-                className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none focus:border-mint-300/40"
-                placeholder="workflow-12345"
-              />
+          {/* n8n Engine Webhook URL & Workflow ID */}
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 space-y-3">
+            <h4 className="font-display text-sm font-bold text-white flex items-center gap-2">
+              <span>⚡</span> n8n AI Agent Engine Integration (Optional)
+            </h4>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  n8n Webhook URL
+                </label>
+                <input
+                  type="url"
+                  value={form.n8nWebhookUrl}
+                  onChange={(e) => setForm((prev) => ({ ...prev, n8nWebhookUrl: e.target.value }))}
+                  className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white outline-none focus:border-mint-300/40"
+                  placeholder="https://n8n.example.com/webhook/my-agent"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  n8n Workflow ID
+                </label>
+                <input
+                  type="text"
+                  value={form.n8nWorkflowId}
+                  onChange={(e) => setForm((prev) => ({ ...prev, n8nWorkflowId: e.target.value }))}
+                  className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white outline-none focus:border-mint-300/40"
+                  placeholder="e.g. WF_12345"
+                />
+              </div>
             </div>
           </div>
 
-          {/* Submit Action */}
-          <div className="pt-3">
-            <AppButton
-              type="submit"
-              disabled={loading}
-              className="w-full justify-center py-4 text-base font-bold shadow-xl shadow-mint-300/20"
-            >
-              {loading ? "Submitting..." : isEditMode ? "💾 Save & Submit for Admin Approval" : "🚀 Create & Submit for Admin Approval"}
+          <div className="pt-2">
+            <AppButton type="submit" disabled={loading} className="w-full py-3 text-sm font-bold">
+              {loading
+                ? "Submitting..."
+                : isEditMode
+                ? "Update & Save Agent"
+                : "🚀 Submit Agent for Approval"}
             </AppButton>
           </div>
         </form>
