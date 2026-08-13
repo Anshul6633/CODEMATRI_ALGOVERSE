@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --configLoader runner",
-    "build": "tsc -b && vite build --configLoader runner",
+    "build": "vite build --configLoader runner",
     "preview": "vite preview --configLoader runner",
     "lint": "echo 'lint configured at root'",
     "typecheck": "tsc -b --pretty false"
