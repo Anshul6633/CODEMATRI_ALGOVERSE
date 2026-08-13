@@ -38,7 +38,7 @@ export function setPeraNetwork(network: "testnet" | "mainnet"): void {
 }
 
 export async function restorePeraWalletSession(): Promise<string> {
-  const accounts = await peraWallet.reconnectSession();
+  const accounts = await peraWallet.reconnectSession().catch(() => []);
   const address = accounts[0] ?? "";
   if (address) {
     setStoredWalletAddress(address);
@@ -56,7 +56,7 @@ export async function connectPeraWallet(): Promise<string> {
 }
 
 export async function disconnectPeraWallet(): Promise<void> {
-  await peraWallet.disconnect();
+  await peraWallet.disconnect().catch(() => {});
   clearWalletSession();
 }
 
@@ -72,15 +72,27 @@ export function createPeraX402Signer(walletAddress: string): ClientAvmSigner {
   return {
     address: walletAddress,
     async signTransactions(txns: Uint8Array[], indexesToSign?: number[]) {
+      // Ensure Pera Wallet session is initialized before attempting to sign
+      if (!peraWallet.isConnected) {
+        const reconnected = await peraWallet.reconnectSession().catch(() => []);
+        if (!reconnected || reconnected.length === 0) {
+          const connected = await peraWallet.connect().catch(() => []);
+          if (!connected || connected.length === 0) {
+            throw new Error("Pera Wallet is not connected. Please connect your Pera Wallet on the Wallet page.");
+          }
+        }
+      }
+
+      const activeAddress = peraWallet.reconnectSession ? (getStoredWalletAddress() || walletAddress) : walletAddress;
       const indicesToSign = indexesToSign ?? txns.map((_, index) => index);
       const signed = new Array<Uint8Array | null>(txns.length).fill(null);
 
       const txGroup: SignerTransaction[] = txns.map((txn, index) => ({
         txn: algosdk.decodeUnsignedTransaction(txn),
-        signers: indicesToSign.includes(index) ? [walletAddress] : [],
+        signers: indicesToSign.includes(index) ? [activeAddress] : [],
       }));
 
-      const result = await peraWallet.signTransaction([txGroup], walletAddress);
+      const result = await peraWallet.signTransaction([txGroup], activeAddress);
 
       let signedIndex = 0;
       for (const index of indicesToSign) {

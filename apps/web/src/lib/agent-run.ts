@@ -1,7 +1,7 @@
 import { API_URL } from "./api";
 import { getAccessToken, getStoredWalletAddress, setStoredWalletAddress } from "./session";
 import { createPaidFetch } from "./x402";
-import { createPeraX402Signer, getPeraX402Network, restorePeraWalletSession } from "./pera";
+import { connectPeraWallet, createPeraX402Signer, getPeraX402Network, restorePeraWalletSession } from "./pera";
 
 function decodeBase64Json<T>(value: string): T | null {
   try {
@@ -27,17 +27,23 @@ async function fileToBase64(file: File): Promise<string> {
 export async function runPaidAgent(
   agentId: string,
   input: Record<string, unknown>,
-  options?: { resumeFile?: File | null },
+  options?: { resumeFile?: File | null; skipPayment?: boolean },
 ) {
   const accessToken = getAccessToken();
-  const restoredWalletAddress = await restorePeraWalletSession().catch(() => "");
-  const walletAddress = restoredWalletAddress || getStoredWalletAddress();
-  if (walletAddress) {
-    setStoredWalletAddress(walletAddress);
+  let walletAddress = getStoredWalletAddress();
+
+  // On first Pay & Run (when skipPayment is false):
+  // Prompt Pera Wallet connection modal if wallet is not connected yet!
+  if (!options?.skipPayment && !walletAddress) {
+    const restored = await restorePeraWalletSession().catch(() => "");
+    walletAddress = restored || (await connectPeraWallet().catch(() => ""));
+    if (walletAddress) {
+      setStoredWalletAddress(walletAddress);
+    }
   }
 
   if (!accessToken && !walletAddress) {
-    throw new Error("Please sign in or connect Pera Wallet before running an agent.");
+    throw new Error("Please connect Pera Wallet before running paid agents.");
   }
 
   const inputPayload: Record<string, unknown> = { ...input };
@@ -52,6 +58,17 @@ export async function runPaidAgent(
   }
 
   const requestBody = JSON.stringify({ input: inputPayload });
+
+  const runDirectly = async () =>
+    fetch(`${API_URL}/agents/${agentId}/run`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+        "x-session-id": String(inputPayload.sessionId || "active-session-id"),
+      },
+      body: requestBody,
+    });
 
   const runWithBrowserWallet = async () => {
     const paidFetch = createPaidFetch(createPeraX402Signer(walletAddress), getPeraX402Network());
@@ -77,14 +94,29 @@ export async function runPaidAgent(
 
   let response: Response;
   try {
-    if (!walletAddress) {
-      response = await runWithBackendSigner();
-    } else {
+    // Session Active -> Skip Pera Wallet & Run Directly!
+    if (options?.skipPayment) {
+      try {
+        response = await runDirectly();
+      } catch {
+        response = await runWithBackendSigner();
+      }
+
+      if (!response.ok && response.status === 402) {
+        response = await runWithBackendSigner();
+      }
+    } else if (walletAddress) {
+      // First Pay & Run -> Request Pera Wallet to sign x402 payment!
       response = await runWithBrowserWallet();
+    } else {
+      response = await runWithBackendSigner();
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (walletAddress) {
+    if (message.toLowerCase().includes("failed to fetch")) {
+      throw new Error("API server connection error. Please ensure the API backend (http://localhost:8080) is running.");
+    }
+    if (walletAddress && !options?.skipPayment) {
       throw new Error(`Pera Wallet payment failed: ${message}`);
     }
 

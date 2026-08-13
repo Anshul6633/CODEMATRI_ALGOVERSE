@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { Badge, AppButton, AgentCard, SectionHeading, StatCard } from "../components/ui";
+import { Badge, AppButton, AgentCard, SectionHeading } from "../components/ui";
 import { apiFetch } from "../lib/api";
-import { mockAgents, revenueSeries as fallbackRevenueSeries } from "../data/mock";
+import { mockAgents } from "../data/mock";
 
 interface AgentSummary {
   _id: string;
@@ -20,12 +20,6 @@ interface AgentSummary {
 
 interface AgentsResponse {
   items: AgentSummary[];
-}
-
-interface AnalyticsResponse {
-  revenue?: number;
-  totalTransactions?: number;
-  usageByDay?: Array<{ date: string; runs: number; revenue: number }>;
 }
 
 export function HomePage() {
@@ -65,132 +59,91 @@ export function HomePage() {
     },
   });
 
-  const { data: analytics } = useQuery({
-    queryKey: ["home-analytics"],
-    queryFn: async () => {
-      try {
-        return await apiFetch<AnalyticsResponse>("/analytics");
-      } catch {
-        return null;
-      }
-    },
-  });
-
-  const revenuePoints = analytics?.usageByDay?.length
-    ? analytics.usageByDay.map((point, index) => ({
-        month: point.date.slice(5, 10),
-        revenue: point.revenue,
-        transactions: point.runs,
-      }))
-    : fallbackRevenueSeries;
-
   return (
-    <div className="space-y-10">
-      <section className="grid gap-8 lg:grid-cols-[1.15fr_0.85fr] lg:items-center">
-        <div className="space-y-6">
+    <div className="space-y-16">
+      {/* ── Hero ── */}
+      <section className="relative pt-4 pb-2 text-center">
+        {/* Decorative glow blobs */}
+        <div className="pointer-events-none absolute -top-20 left-1/2 -translate-x-1/2 h-[340px] w-[600px] rounded-full bg-mint-300/10 blur-[120px]" />
+        <div className="pointer-events-none absolute -top-10 left-1/3 h-[200px] w-[300px] rounded-full bg-gold-300/8 blur-[100px]" />
+
+        <div className="relative mx-auto max-w-3xl space-y-6">
           <Badge tone="mint">Algorand x402 Marketplace</Badge>
-          <h1 className="font-display max-w-3xl text-5xl font-bold leading-tight text-white sm:text-6xl">
-            Pay only when AI agents work. No subscriptions. No dead seats.
+
+          <h1 className="font-display text-4xl font-bold leading-[1.15] text-white sm:text-5xl lg:text-6xl">
+            Pay only when
+            <span className="bg-gradient-to-r from-mint-300 to-gold-300 bg-clip-text text-transparent"> AI delivers</span>
           </h1>
-          <p className="max-w-2xl text-lg leading-8 text-slate-300">
-            AIHub is a decentralized, pay-per-use marketplace for AI services on Algorand. The web app now uses a
-            backend-owned wallet to pay x402 challenges automatically and returns an on-chain receipt for each
-            successful execution.
+
+          <p className="mx-auto max-w-xl text-base leading-7 text-slate-300 sm:text-lg">
+            A decentralized marketplace for AI agents. Every execution settles in
+            USDC on Algorand. Developers keep 90%. Users pay per use — no subscriptions.
           </p>
-          <div className="flex flex-wrap gap-3">
+
+          <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
             <AppButton href="/marketplace">Browse Agents</AppButton>
             <AppButton href="/developer" variant="secondary">Publish as Developer</AppButton>
-            <AppButton href="/wallet" variant="secondary">Wallet settings</AppButton>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <StatCard label="Average payment" value="$0.02" detail="USDC per invocation" trend="x402 exact" />
-            <StatCard label="Marketplace fee" value="10%" detail="Developers keep 90%" trend="Algorand" />
-            <StatCard label="Sample agents" value={String(featured.length || 0)} detail="Ready-to-publish AI services" trend="Live" />
-          </div>
-        </div>
-
-        <div className="section-card relative overflow-hidden p-6">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(49,212,170,0.15),transparent_36%),radial-gradient(circle_at_bottom_left,rgba(227,155,25,0.12),transparent_28%)]" />
-          <div className="relative space-y-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-400">Live flow</p>
-                <h2 className="font-display text-2xl font-bold text-white">402 -&gt; sign -&gt; settle -&gt; receipt</h2>
-              </div>
-              <Badge tone="gold">Algorand USDC</Badge>
-            </div>
-            <div className="space-y-3 text-sm text-slate-300">
-              {[
-                "Request hits a protected AI endpoint",
-                "Server returns 402 Payment Required",
-                "Backend signs via x402 and retries",
-                "Facilitator verifies and settles USDC ASA",
-                "AI response returns with Algorand transaction ID",
-                "Receipt is stored for download and history",
-              ].map((step, index) => (
-                <div key={step} className="flex items-center gap-3 rounded-2xl border border-white/5 bg-white/5 px-4 py-3">
-                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-mint-300/15 text-xs font-semibold text-mint-100">{index + 1}</span>
-                  <span>{step}</span>
-                </div>
-              ))}
-            </div>
           </div>
         </div>
       </section>
 
+      {/* ── How It Works — 3 steps ── */}
+      <section>
+        <SectionHeading
+          eyebrow="How it works"
+          title="From click to on-chain receipt"
+        />
+
+        <div className="grid gap-5 sm:grid-cols-3">
+          {([
+            {
+              step: "01",
+              icon: "🛒",
+              title: "Choose an Agent",
+              desc: "Browse the marketplace and pick any AI agent — text summarizer, resume analyzer, content writer, and more.",
+            },
+            {
+              step: "02",
+              icon: "💳",
+              title: "Pay & Run",
+              desc: "The server returns an HTTP 402 challenge. Your wallet signs USDC on Algorand. The agent executes instantly.",
+            },
+            {
+              step: "03",
+              icon: "📄",
+              title: "Get Your Receipt",
+              desc: "Every execution is settled on-chain. You receive a verifiable Algorand TX ID and a downloadable receipt.",
+            },
+          ] as const).map(item => (
+            <div
+              key={item.step}
+              className="section-card group relative overflow-hidden p-6 transition duration-300 hover:-translate-y-1 hover:border-mint-300/20"
+            >
+              {/* Step number watermark */}
+              <span className="pointer-events-none absolute -right-2 -top-4 font-display text-[5rem] font-bold leading-none text-white/[0.03]">
+                {item.step}
+              </span>
+
+              <div className="relative space-y-3">
+                <span className="text-3xl">{item.icon}</span>
+                <h3 className="font-display text-lg font-bold text-white">{item.title}</h3>
+                <p className="text-sm leading-6 text-slate-400">{item.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── Featured Agents ── */}
       <section>
         <SectionHeading
           eyebrow="Trending now"
           title="Featured AI agents"
-          description="Live agents are loaded from the API when available. Each route is backed by x402 payment control and Algorand settlement."
-          action={<AppButton href="/marketplace" variant="secondary">Open marketplace</AppButton>}
+          description="Each agent is backed by x402 payment control and Algorand settlement."
+          action={<AppButton href="/marketplace" variant="secondary">View all</AppButton>}
         />
         <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
           {featured.map(agent => <AgentCard key={agent.id} agent={agent} />)}
-        </div>
-      </section>
-
-      <section className="grid gap-5 lg:grid-cols-[0.95fr_1.05fr]">
-        <div className="section-card p-6">
-          <SectionHeading
-            eyebrow="Business model"
-            title="Revenue split and platform economics"
-            description="Developers define pricing in USDC, the marketplace collects a 10% commission, and developers keep the remaining 90%."
-          />
-          <div className="space-y-4 text-sm text-slate-300">
-            {[
-              ["Resume analysis", "$0.02", "Fast scoring and structured feedback"],
-              ["Translation", "$0.01", "Low-cost one-off language conversion"],
-              ["Image generation", "$0.05", "Premium media generation on demand"],
-            ].map(([name, price, note]) => (
-              <div key={name} className="flex items-center justify-between rounded-2xl border border-white/5 bg-white/5 px-4 py-3">
-                <div>
-                  <p className="font-medium text-white">{name}</p>
-                  <p className="text-xs text-slate-400">{note}</p>
-                </div>
-                <span className="font-display text-lg text-mint-100">{price}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="section-card p-6">
-          <SectionHeading
-            eyebrow="Performance"
-            title="Marketplace momentum"
-            description="These metrics feed the developer and admin dashboards, making analytics and trending ranking easy to explain."
-          />
-          <div className="space-y-4">
-            {revenuePoints.map(point => (
-              <div key={point.month} className="grid grid-cols-[64px_1fr_88px] items-center gap-4">
-                <p className="text-sm text-slate-400">{point.month}</p>
-                <div className="h-3 overflow-hidden rounded-full bg-white/5">
-                  <div className="h-full rounded-full bg-gradient-to-r from-mint-300 to-gold-300" style={{ width: `${Math.min(point.revenue / 60, 100)}%` }} />
-                </div>
-                <p className="text-right text-sm text-slate-300">${point.revenue}</p>
-              </div>
-            ))}
-          </div>
         </div>
       </section>
     </div>

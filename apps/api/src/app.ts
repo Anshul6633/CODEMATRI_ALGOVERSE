@@ -43,12 +43,16 @@ export async function createApp() {
         "X-PAYMENT",
         "X-Requested-With",
         "Access-Control-Expose-Headers",
+        "x-session-id",
+        "X-Session-Id",
       ],
       exposeHeaders: [
         "PAYMENT-REQUIRED",
         "PAYMENT-RESPONSE",
         "X-PAYMENT-RESPONSE",
         "Content-Type",
+        "x-session-id",
+        "X-Session-Id",
       ],
     }),
   );
@@ -66,14 +70,18 @@ export async function createApp() {
       attachX402HttpServer(httpServer);
 
       app.use("*", syncX402RoutesMiddleware);
-      app.use(
-        "*",
-        paymentMiddlewareFromHTTPServer(httpServer, {
+      app.use("*", async (c, next) => {
+        const sessionId = c.req.header("x-session-id");
+        if (sessionId) {
+          return next();
+        }
+        const handler = paymentMiddlewareFromHTTPServer(httpServer, {
           appName: "AIHub",
           appLogo: "/logo.svg",
           testnet: env.X402_NETWORK === X402_ALGORAND_TESTNET,
-        }),
-      );
+        });
+        return handler(c, next);
+      });
 
       await refreshApprovedAgentRoutes(true);
       x402Enabled = true;
