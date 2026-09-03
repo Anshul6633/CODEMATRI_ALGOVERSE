@@ -8,7 +8,8 @@
     "build": "vite build --configLoader runner",
     "preview": "vite preview --configLoader runner",
     "lint": "echo 'lint configured at root'",
-    "typecheck": "tsc -b --pretty false"
+    "test": "echo 'No test suite specified for @aihub/web'",
+    "typecheck": "node ../../node_modules/typescript/bin/tsc -b --pretty false"
   },
   "dependencies": {
     "@aihub/shared": "file:../../packages/shared",

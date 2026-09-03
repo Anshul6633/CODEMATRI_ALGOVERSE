@@ -6,11 +6,11 @@
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "tsc -p tsconfig.json",
+    "build": "node ../../node_modules/typescript/bin/tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "lint": "echo 'lint configured at root'",
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "node ../../node_modules/typescript/bin/tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@aihub/shared": "file:../../packages/shared",
